@@ -1,0 +1,64 @@
+data:
+  batch_size: 100
+  smiles_file: VAE_dependencies/Datasets/simple_SMILES.txt
+  type_of_encoding: 1
+  
+decoder:
+  latent_dimension: 50  
+  gru_neurons_num: 100
+  gru_stack_size: 1
+  
+encoder:
+  layer_1d: 100
+  layer_2d: 100
+  layer_3d: 100
+  latent_dimension: 50
+  
+training_VAE:
+  latent_dimension: 50
+  KLD_alpha: 1.0e-05
+  lr_enc: 0.001
+  lr_dec: 0.001
+  num_epochs: 200
+  sample_num: 1000
+  
+training_BetaVAE:
+  latent_dimension: 50
+  beta: 6
+  lr_enc: 0.001
+  lr_dec: 0.001
+  num_epochs: 1000
+  sample_num: 1000
+  
+training_BetaTCVAE:
+  latent_dimension: 50
+  alpha: 1
+  beta: 1
+  gamma: 1
+  anneal_steps: 200
+  lr_enc: 0.1
+  lr_dec: 0.1
+  num_epochs: 1000
+  sample_num: 1000
+  
+plot:
+  plot_quality: True
+  plot_loss: True
+  plot_PCA: False
+  plot_tSNE: True
+
+tSNE:
+  n_components: 3
+  perplexity: 45
+
+kmeans:
+  num_clusters: 40
+  
+evaluate:
+    evaluate_model: True # eval mode; interpret i.e. tsne and pca plots
+    evaluate_metrics: False #i.e. sampling, calculating quality
+  
+  
+  # lr_enc: 0.001999, lr_dec: 0.001999, reconstruction: 73.33333%
+   # lr_enc: 0.0019, lr_dec: 0.0019, reconstruction: 73.33333%
+    # lr_enc: 0.00195, lr_dec: 0.00195, reconstruction: 73.33333%
