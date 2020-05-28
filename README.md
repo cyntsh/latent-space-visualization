@@ -8,4 +8,4 @@ Added functionalities:
 - Switch from training to evaluating the model and plotting PCA and t-SNE quickly
 - Plot epochs vs loss and epochs vs reconstruction quality
 
-You can access some results in the VAE_dependencies/Saved_models folder.
+You can view some plots and results in the VAE_dependencies/Saved_models folder.
