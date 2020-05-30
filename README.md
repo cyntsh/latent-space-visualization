@@ -1,5 +1,5 @@
 # latent-space-visualization
-Builds from Dr. Krenn's selfies repository here: https://github.com/aspuru-guzik-group/selfies/blob/master/VariationalAutoEncoder_with_SELFIES/chemistryVAE.py
+Builds from the selfies repository (by Mario Krenn et al.) here: https://github.com/aspuru-guzik-group/selfies/blob/master/VariationalAutoEncoder_with_SELFIES/chemistryVAE.py
 
 Added functionalities:
 - Save and load VAE models
