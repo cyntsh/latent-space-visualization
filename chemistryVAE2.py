@@ -12,10 +12,10 @@ from torch import nn
 from random import shuffle
 
 sys.path.append('VAE_dependencies')
-from data_loader import multiple_smile_to_hot, multiple_selfies_to_hot, len_selfie, split_selfie, hot_to_selfies
+from data_loader import selfies_to_hot, multiple_smile_to_hot, multiple_selfies_to_hot, len_selfie, split_selfie, hot_to_selfies
 from rdkit.Chem import MolFromSmiles
 from rdkit import rdBase
-from selfies import decoder
+from selfies import decoder, encoder
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import MinMaxScaler
@@ -145,7 +145,7 @@ def sample_latent_space(latent_dimension, total_samples):
     model_decode.eval()
     
     fancy_latent_point=torch.normal(torch.zeros(latent_dimension),torch.ones(latent_dimension))
-
+    print(fancy_latent_point)
     hidden = model_decode.init_hidden() 
     gathered_atoms = []
     for ii in range(len_max_molec):                 # runs over letters from molecules (len=size of largest molecule)
@@ -157,7 +157,6 @@ def sample_latent_space(latent_dimension, total_samples):
         soft = nn.Softmax(0)
         decoded_one_hot = soft(decoded_one_hot)
         _,max_index=decoded_one_hot.max(0)
-
         gathered_atoms.append(max_index.data.cpu().numpy().tolist())
             
     model_encode.train()
@@ -168,6 +167,7 @@ def sample_latent_space(latent_dimension, total_samples):
         print('Sample #', total_samples, decoder(hot_to_selfies(gathered_atoms, encoding_alphabet)))
     
     return gathered_atoms
+
 
 
 
@@ -258,8 +258,10 @@ def find_clusters(X, n_clusters, rseed=2):
         centers = new_centers
     
     return centers, labels
-
  
+test_mol1 = ''
+test_mol2 = ''
+
 def train_model(data_train, data_valid, num_epochs, latent_dimension, lr_enc, lr_dec, KLD_alpha, sample_num, encoding_alphabet):
     """
     Train the Variational Auto-Encoder
@@ -293,19 +295,16 @@ def train_model(data_train, data_valid, num_epochs, latent_dimension, lr_enc, lr
 
             # manual batch iterations
             current_smiles_start, current_smiles_stop = batch_iteration * batch_size, (batch_iteration + 1) * batch_size 
-            inp_smile_hot = data_train[current_smiles_start : current_smiles_stop]
-
+            inp_smile_hot = data_train[current_smiles_start : current_smiles_stop]\
+            
             # reshaping for efficient parallelization
             inp_smile_encode = inp_smile_hot.reshape(inp_smile_hot.shape[0], inp_smile_hot.shape[1] * inp_smile_hot.shape[2]) 
             latent_points, mus, log_vars = model_encode(inp_smile_encode)
             z = latent_points.detach().numpy()
             latent_points_combined.extend(z)
-            
             latent_points = latent_points.reshape(1, batch_size, latent_points.shape[1])
-            
             # standard Kullback–Leibler divergence
             kld += -0.5 * torch.mean(1. + log_vars - mus.pow(2) - log_vars.exp()) 
-
             # initialization hidden internal state of RNN (RNN has two inputs and two outputs:)
             #    input: latent space & hidden state
             #    output: onehot encoding of one character of molecule & hidden state
@@ -318,7 +317,7 @@ def train_model(data_train, data_valid, num_epochs, latent_dimension, lr_enc, lr
             for seq_index in range(inp_smile_hot.shape[1]):
                 decoded_one_hot_line, hidden  = model_decode(latent_points, hidden)
                 decoded_one_hot[:, seq_index, :] = decoded_one_hot_line[0]
-            
+                
             test_decoded_one_hot = decoded_one_hot.reshape(batch_size, inp_smile_hot.shape[1], inp_smile_hot.shape[2])
             decoded_one_hot = decoded_one_hot.reshape(batch_size * inp_smile_hot.shape[1], inp_smile_hot.shape[2])
             _, label_atoms  = inp_smile_hot.max(2)
@@ -330,12 +329,18 @@ def train_model(data_train, data_valid, num_epochs, latent_dimension, lr_enc, lr
                 output_mol = []
                 for mol in decoded_mol:
                     output_mol.append(decoder(hot_to_selfies(mol, encoding_alphabet)))
+                #print(output_mol[0], output_mol[1])
                 output_mol_combined.extend(output_mol)
                 
                 # add the input molecules in string format to memory
                 input_mol = []
                 for mol in test_label_atoms:
                     input_mol.append(decoder(hot_to_selfies(mol, encoding_alphabet)))
+                global test_mol1
+                global test_mol2
+                test_mol1 = input_mol[0] #to use in interpolation
+                test_mol2 = input_mol[1] #to use in interpolation
+                #print(test_mol1, test_mol2)
                 input_mol_combined.extend(input_mol)
                 
             else:
@@ -448,7 +453,7 @@ def train_model(data_train, data_valid, num_epochs, latent_dimension, lr_enc, lr
                         
                         print('Finding clusters...')
                         # perform k-means clustering
-                        centers, labels = find_clusters(Z_tsne, 20)
+                        centers, labels = find_clusters(Z_tsne, num_clusters)
                         
                         #print(len(labels), labels[:20])
                         #print(len(centers), centers[0])
@@ -459,7 +464,7 @@ def train_model(data_train, data_valid, num_epochs, latent_dimension, lr_enc, lr
                                     cmap= 'viridis', marker='.',
                                     s=10,alpha=0.5, edgecolors='none')
                         plt.show()
-                        plt.savefig('VAE_dependencies/Saved_models/VAE_{}-comp_{}-perplexity_{}-clusters_tsne_fig_epoch_{}'.format(n_comp, perplexity, num_clusters, settings['training_VAE']['num_epochs']))                    
+                        #plt.savefig('VAE_dependencies/Saved_models/VAE_{}-comp_{}-perplexity_{}-clusters_tsne_fig_epoch_{}'.format(n_comp, perplexity, num_clusters, settings['training_VAE']['num_epochs']))                    
                     
                     elif n_comp == 3:
                         df = pd.DataFrame(np.transpose((Z_tsne[:,0],Z_tsne[:,1],Z_tsne[:,2])))
@@ -467,7 +472,7 @@ def train_model(data_train, data_valid, num_epochs, latent_dimension, lr_enc, lr
                         
                         print('Finding clusters...')
                         # perform k-means clustering
-                        centers, labels = find_clusters(Z_tsne, 20)
+                        centers, labels = find_clusters(Z_tsne, num_clusters)
                         
                         #print(len(labels), labels[:20])
                         #print(len(centers), centers[0])
@@ -477,7 +482,7 @@ def train_model(data_train, data_valid, num_epochs, latent_dimension, lr_enc, lr
                         fig=plt.figure()
                         plot = fig.add_subplot(111, projection='3d')
                         plot.scatter(df['x'], df['y'], df['z'], c=labels, marker='.')
-                        plot.figure.savefig('VAE_dependencies/Saved_models/VAE_{}-comp_{}-perplexity_{}-clusters_tsne_fig_epoch_{}'.format(n_comp, perplexity, num_clusters, settings['training_VAE']['num_epochs']))
+                        #plot.figure.savefig('VAE_dependencies/Saved_models/VAE_{}-comp_{}-perplexity_{}-clusters_tsne_fig_epoch_{}'.format(n_comp, perplexity, num_clusters, settings['training_VAE']['num_epochs']))
                     
                     cluster_to_mol = {}
                     for i in range(len(labels)):
@@ -554,10 +559,43 @@ def train_model(data_train, data_valid, num_epochs, latent_dimension, lr_enc, lr
             if num_deviates == 10:
                 print('Early stopping criteria: validation set quality deviates from training set quality')
                 break
+
+# resource: http://krasserm.github.io/2018/07/27/dfc-vae/
+def linear_interpolation(x_from, x_to, steps):
+    n = steps + 1
+    hot = multiple_selfies_to_hot([x_from], largest_molecule_len, encoding_alphabet)
+    x_from = torch.tensor(hot, dtype=torch.float).to(device)
+    input_shape1 = x_from.shape[1]
+    input_shape2 = x_from.shape[2]
+    x_from = x_from.reshape(x_from.shape[0], x_from.shape[1] * x_from.shape[2])
+    _, hot = selfies_to_hot(x_to, largest_molecule_len, encoding_alphabet)
+    x_to = torch.tensor([hot], dtype=torch.float).to(device)
+    x_to = x_to.reshape(x_to.shape[0], x_to.shape[1] * x_to.shape[2])
+    t_from = model_encode(x_from)[0]
+    t_from = t_from.reshape(1, 1, t_from.shape[1])
+    t_to = model_encode(x_to)[0]
+    t_to = t_to.reshape(1, 1, t_to.shape[1])
+    diff = t_to[0][0] - t_from[0][0]
+    inter = torch.zeros((1, n, t_to.shape[2]))
+    for i in range(n):
+        inter[0][i] = t_from[0][0] + i / steps * diff
         
-        
-        
-            
+    hidden = model_decode.init_hidden(batch_size=n)
+    
+    decoded_one_hot = torch.zeros(n, input_shape1, input_shape2).to(device)
+    for seq_index in range(input_shape1):
+        decoded_one_hot_line, hidden  = model_decode(inter, hidden)
+        decoded_one_hot[:, seq_index, :] = decoded_one_hot_line[0]
+    
+    decoded_one_hot = decoded_one_hot.reshape(n, input_shape1, input_shape2)
+    output_mol = []
+    _, decoded_mol = decoded_one_hot.max(2)
+    for mol in decoded_mol:
+        output_mol.append(decoder(hot_to_selfies(mol, encoding_alphabet)))
+    
+    
+    return output_mol
+     
 
 def get_selfie_and_smiles_encodings_for_dataset(filename_data_set_file_smiles):
     """
@@ -687,6 +725,8 @@ if __name__ == '__main__':
                 print('No models saved in file with ' + str(settings['training_VAE']['num_epochs']) + ' epochs')
                 
         print("start training")
+        
+        
         train_model(data_train=data_train, data_valid=data_valid, **training_parameters, encoding_alphabet=encoding_alphabet)
         
         if not settings['evaluate']['evaluate_model']:
@@ -706,6 +746,10 @@ if __name__ == '__main__':
                 plt.xlabel('Epochs')
                 plt.ylabel('Reconstruction Loss')
                 plt.show()
+        else:
+            print('Linear interpolation of 10 steps between '+test_mol1 +' and '+test_mol2+':')
+            mol_inter = linear_interpolation(encoder(test_mol1), encoder(test_mol2), 10)
+            print(mol_inter)
 
         
         with open('COMPLETED', 'w') as content:
@@ -714,4 +758,5 @@ if __name__ == '__main__':
 
     except AttributeError:
         _, error_message,_ = sys.exc_info()
+        print(error_message)
         print(error_message)
